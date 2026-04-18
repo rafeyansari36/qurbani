@@ -1,18 +1,9 @@
 import { Router } from 'express';
-import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, signAuthToken } from '../middleware/auth.js';
 import { validateLoginInput, validateCreateUserInput } from '../utils/validate.js';
 
 const router = Router();
-
-function signToken(user) {
-  return jwt.sign(
-    { id: user._id.toString(), role: user.role, name: user.name },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-  );
-}
 
 router.post('/login', async (req, res, next) => {
   try {
@@ -24,7 +15,7 @@ router.post('/login', async (req, res, next) => {
     const ok = await user.verifyPassword(password);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = signToken(user);
+    const token = signAuthToken(user);
     res.json({
       token,
       user: { id: user._id, name: user.name, username: user.username, role: user.role },

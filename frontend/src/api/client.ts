@@ -1,7 +1,5 @@
 import axios from 'axios';
 
-// Accepts either "https://backend.example.com" or "https://backend.example.com/api" —
-// we always normalize to end with "/api".
 function resolveBaseURL() {
   const raw = (import.meta.env.VITE_API_BASE_URL || '').trim();
   if (!raw) return '/api';
@@ -19,14 +17,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Every authenticated response may include a fresh token via X-Refreshed-Token.
+// We persist it so the session slides forward on every request.
 api.interceptors.response.use(
-  (r) => r,
+  (res) => {
+    const refreshed = res.headers?.['x-refreshed-token'];
+    if (refreshed) {
+      localStorage.setItem('qurb_token', String(refreshed));
+    }
+    return res;
+  },
   (err) => {
     if (err.response?.status === 401) {
+      const code = err.response?.data?.code;
+      const reason = code === 'TOKEN_EXPIRED' ? 'expired' : 'unauthorized';
       localStorage.removeItem('qurb_token');
       localStorage.removeItem('qurb_user');
       if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+        window.location.href = `/login?reason=${reason}`;
       }
     }
     return Promise.reject(err);

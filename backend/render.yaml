@@ -18,7 +18,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
-        value: 7d
+        value: 15m
       - key: CORS_ORIGIN
         sync: false
       - key: ALLOW_VERCEL_PREVIEWS

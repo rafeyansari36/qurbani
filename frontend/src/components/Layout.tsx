@@ -1,10 +1,9 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useEffect, useState } from 'react';
 
 export default function Layout() {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
   const [deviceLabel, setDeviceLabel] = useState(
     () => localStorage.getItem('qurb_device_label') || ''
   );
@@ -50,10 +49,7 @@ export default function Layout() {
             {user?.name} <span className="opacity-75">({user?.role})</span>
           </div>
           <button
-            onClick={() => {
-              logout();
-              navigate('/login');
-            }}
+            onClick={() => logout('manual')}
             className="text-sm bg-white/10 hover:bg-white/20 px-3 py-1 rounded"
           >
             Logout
