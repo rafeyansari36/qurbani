@@ -1,10 +1,15 @@
 import axios from 'axios';
 
-// In dev: Vite proxies /api to http://localhost:5000 (vite.config.ts).
-// In prod (Vercel): VITE_API_BASE_URL points to the Render backend, e.g. https://qurb-api.onrender.com/api
-const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
+// Accepts either "https://backend.example.com" or "https://backend.example.com/api" —
+// we always normalize to end with "/api".
+function resolveBaseURL() {
+  const raw = (import.meta.env.VITE_API_BASE_URL || '').trim();
+  if (!raw) return '/api';
+  const trimmed = raw.replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+}
 
-export const api = axios.create({ baseURL });
+export const api = axios.create({ baseURL: resolveBaseURL() });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('qurb_token');

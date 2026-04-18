@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { printer as ThermalPrinter, types as PrinterTypes } from 'node-thermal-printer';
 import PDFDocument from 'pdfkit';
 import Receipt from '../models/Receipt.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -7,7 +6,10 @@ import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 router.use(requireAuth);
 
-function buildPrinter(target) {
+// Thermal printer module is loaded lazily — it has native deps that we don't want
+// at startup on cloud hosts (Render) where no physical printer is reachable.
+async function buildPrinter(target) {
+  const { printer: ThermalPrinter, types: PrinterTypes } = await import('node-thermal-printer');
   return new ThermalPrinter({
     type: PrinterTypes.EPSON,
     interface: target || process.env.PRINTER_INTERFACE || 'tcp://192.168.1.100',
@@ -32,7 +34,15 @@ router.post('/receipt/:id', async (req, res, next) => {
     const receipt = await Receipt.findById(req.params.id);
     if (!receipt) return res.status(404).json({ error: 'Not found' });
 
-    const printer = buildPrinter(req.body.printerInterface);
+    let printer;
+    try {
+      printer = await buildPrinter(req.body.printerInterface);
+    } catch (e) {
+      return res.status(503).json({
+        error: 'Thermal printer module not available on this server',
+        detail: e.message,
+      });
+    }
 
     printer.alignCenter();
     printer.bold(true);

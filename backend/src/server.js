@@ -4,6 +4,17 @@ import cors from 'cors';
 import morgan from 'morgan';
 import mongoose from 'mongoose';
 
+console.log(`[boot] Node ${process.version} starting qurb-backend`);
+
+process.on('uncaughtException', (err) => {
+  console.error('[fatal] uncaughtException:', err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[fatal] unhandledRejection:', reason);
+  process.exit(1);
+});
+
 import authRoutes from './routes/auth.routes.js';
 import entryRoutes from './routes/entry.routes.js';
 import exportRoutes from './routes/export.routes.js';
