@@ -4,6 +4,7 @@ import Receipt from '../models/Receipt.js';
 import { nextSequence } from '../models/Counter.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateReceiptInput } from '../utils/validate.js';
+import { scheduleSync } from '../utils/gsheetSync.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -88,6 +89,7 @@ router.post('/', async (req, res, next) => {
     });
 
     res.status(201).json({ receipt: doc });
+    scheduleSync('create');
   } catch (err) {
     next(err);
   }
@@ -159,6 +161,7 @@ router.patch('/:id', async (req, res, next) => {
     const receipt = await Receipt.findByIdAndUpdate(req.params.id, patch, { new: true });
     if (!receipt) return res.status(404).json({ error: 'Not found' });
     res.json({ receipt });
+    scheduleSync('edit');
   } catch (err) {
     next(err);
   }
@@ -173,6 +176,7 @@ router.post('/:id/cancel', async (req, res, next) => {
     );
     if (!receipt) return res.status(404).json({ error: 'Not found' });
     res.json({ receipt });
+    scheduleSync('cancel');
   } catch (err) {
     next(err);
   }

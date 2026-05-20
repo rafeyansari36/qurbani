@@ -58,6 +58,17 @@ interface RecentItem {
   createdAt: string;
 }
 
+interface SyncStatus {
+  enabled: boolean;
+  sheetUrl: string;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  lastDurationMs: number;
+  lastReason: string;
+  inflight: boolean;
+  pending: boolean;
+}
+
 const emptyBucket: InOutBucket = { receipts: 0, hisse: 0, qurbani: 0, aqeeqah: 0, amount: 0 };
 const emptyDayTotal: DayTotals = { receipts: 0, hisse: 0, amount: 0 };
 
@@ -66,6 +77,17 @@ export default function DashboardPage() {
   const isAdmin = user?.role === 'admin';
   const [summary, setSummary] = useState<Summary | null>(null);
   const [recent, setRecent] = useState<RecentItem[]>([]);
+  const [sync, setSync] = useState<SyncStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  async function loadSync() {
+    try {
+      const { data } = await api.get('/sync/sheet/info');
+      setSync(data);
+    } catch {
+      // sync info is non-critical; skip toast
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -77,7 +99,23 @@ export default function DashboardPage() {
         setRecent(r.data.items);
       })
       .catch(() => toast.error('Stats load failed'));
+    loadSync();
+    const t = setInterval(loadSync, 15_000);
+    return () => clearInterval(t);
   }, []);
+
+  async function forceSync() {
+    setSyncing(true);
+    try {
+      const { data } = await api.post('/sync/sheet/now');
+      setSync(data);
+      toast.success('Google Sheet sync ho gaya');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const ts = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const t = summary?.totals;
@@ -187,6 +225,69 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Live Google Sheet */}
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h3 className="font-semibold">Live Google Sheet</h3>
+          {sync?.enabled ? (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+              {sync.inflight ? 'Syncing…' : sync.pending ? 'Pending…' : 'Live'}
+            </span>
+          ) : (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+              Not configured
+            </span>
+          )}
+        </div>
+        {sync?.enabled ? (
+          <>
+            <div className="text-sm text-slate-600">
+              Har entry create / edit / cancel ke baad Google Sheet auto-update hoti hai (~2s delay).
+            </div>
+            <div className="text-xs text-slate-500 space-y-0.5">
+              <div>
+                Last sync:{' '}
+                {sync.lastSyncAt
+                  ? `${new Date(sync.lastSyncAt).toLocaleString('en-IN')} (${sync.lastDurationMs}ms${
+                      sync.lastReason ? `, ${sync.lastReason}` : ''
+                    })`
+                  : 'Abhi tak nahi'}
+              </div>
+              {sync.lastError && (
+                <div className="text-red-600">Last error: {sync.lastError}</div>
+              )}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {sync.sheetUrl && (
+                <a
+                  href={sync.sheetUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-primary"
+                >
+                  Open Live Sheet ↗
+                </a>
+              )}
+              {isAdmin && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={forceSync}
+                  disabled={syncing || sync.inflight}
+                >
+                  {syncing || sync.inflight ? 'Syncing…' : 'Force Re-sync'}
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="text-sm text-slate-600">
+            Backend par <code className="font-mono text-xs bg-slate-100 px-1 rounded">GSHEET_WEBHOOK_URL</code>{' '}
+            set karein to live sync enable hoga. Apps Script setup ke liye{' '}
+            <span className="font-mono text-xs">google-apps-script/Code.gs</span> file dekhein.
           </div>
         )}
       </div>

@@ -9,6 +9,7 @@ import entryRoutes from './routes/entry.routes.js';
 import exportRoutes from './routes/export.routes.js';
 import printRoutes from './routes/print.routes.js';
 import statsRoutes from './routes/stats.routes.js';
+import syncRoutes from './routes/sync.routes.js';
 import { ValidationError } from './utils/validate.js';
 import { seedAdminIfEmpty } from './bootstrap/seedAdmin.js';
 
@@ -70,6 +71,7 @@ try {
   app.use('/api/export', exportRoutes);
   app.use('/api/print', printRoutes);
   app.use('/api/stats', statsRoutes);
+  app.use('/api/sync', syncRoutes);
 
   app.use((err, _req, res, _next) => {
     if (err instanceof ValidationError) {
