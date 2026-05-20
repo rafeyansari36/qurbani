@@ -6,6 +6,12 @@ import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 router.use(requireAuth);
 
+// Volunteers can only print receipts they themselves created.
+function scoped(user, extra = {}) {
+  if (user.role === 'admin') return extra;
+  return { ...extra, createdBy: user._id };
+}
+
 // Thermal printer module is loaded lazily — it has native deps that we don't want
 // at startup on cloud hosts (Render) where no physical printer is reachable.
 async function buildPrinter(target) {
@@ -31,7 +37,7 @@ function hissaTypeLabel(h) {
 
 router.post('/receipt/:id', async (req, res, next) => {
   try {
-    const receipt = await Receipt.findById(req.params.id);
+    const receipt = await Receipt.findOne(scoped(req.user, { _id: req.params.id }));
     if (!receipt) return res.status(404).json({ error: 'Not found' });
 
     let printer;
@@ -99,7 +105,7 @@ router.post('/receipt/:id', async (req, res, next) => {
 
 router.get('/receipt/:id/html', async (req, res, next) => {
   try {
-    const receipt = await Receipt.findById(req.params.id);
+    const receipt = await Receipt.findOne(scoped(req.user, { _id: req.params.id }));
     if (!receipt) return res.status(404).send('Not found');
 
     const hisseHtml = receipt.hisse
@@ -349,7 +355,7 @@ function render58mmReceipt(doc, receipt) {
 
 router.get('/receipt/:id/pdf', async (req, res, next) => {
   try {
-    const receipt = await Receipt.findById(req.params.id);
+    const receipt = await Receipt.findOne(scoped(req.user, { _id: req.params.id }));
     if (!receipt) return res.status(404).json({ error: 'Not found' });
 
     const format = String(req.query.format || 'a4').toLowerCase();

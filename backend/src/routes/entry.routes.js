@@ -11,6 +11,13 @@ router.use(requireAuth);
 
 const year = () => new Date().getFullYear();
 
+// Volunteers can only see / edit / cancel receipts they themselves created.
+// Admins see everything.
+function scoped(user, extra = {}) {
+  if (user.role === 'admin') return extra;
+  return { ...extra, createdBy: user._id };
+}
+
 /**
  * Expand incoming hissa rows:
  * - qurbani row → stays as 1 hissa
@@ -110,7 +117,7 @@ router.get('/check-receipt-no', async (req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const { q, day, qurbaniType, type, from, to, limit = 100, skip = 0 } = req.query;
-    const filter = { cancelled: false };
+    const filter = scoped(req.user, { cancelled: false });
     if (day) filter.day = Number(day);
     if (qurbaniType) filter.qurbaniType = qurbaniType;
     if (type) filter['hisse.type'] = type;
@@ -144,7 +151,7 @@ router.get('/', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const receipt = await Receipt.findById(req.params.id);
+    const receipt = await Receipt.findOne(scoped(req.user, { _id: req.params.id }));
     if (!receipt) return res.status(404).json({ error: 'Not found' });
     res.json({ receipt });
   } catch (err) {
@@ -158,7 +165,11 @@ router.patch('/:id', async (req, res, next) => {
     const patch = {};
     for (const k of updatable) if (k in req.body) patch[k] = req.body[k];
 
-    const receipt = await Receipt.findByIdAndUpdate(req.params.id, patch, { new: true });
+    const receipt = await Receipt.findOneAndUpdate(
+      scoped(req.user, { _id: req.params.id }),
+      patch,
+      { new: true }
+    );
     if (!receipt) return res.status(404).json({ error: 'Not found' });
     res.json({ receipt });
     scheduleSync('edit');
@@ -169,8 +180,8 @@ router.patch('/:id', async (req, res, next) => {
 
 router.post('/:id/cancel', async (req, res, next) => {
   try {
-    const receipt = await Receipt.findByIdAndUpdate(
-      req.params.id,
+    const receipt = await Receipt.findOneAndUpdate(
+      scoped(req.user, { _id: req.params.id }),
       { cancelled: true, cancelledAt: new Date(), cancelledBy: req.user._id },
       { new: true }
     );

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { openHtmlPrint, downloadPdf, printThermal } from '../api/receiptActions';
 import { useDebounce } from '../hooks/useDebounce';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 interface Hissa {
@@ -31,6 +32,8 @@ interface Receipt {
 }
 
 export default function EntriesPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [items, setItems] = useState<Receipt[]>([]);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState('');
@@ -94,6 +97,11 @@ export default function EntriesPage() {
 
   return (
     <div className="space-y-4">
+      {!isAdmin && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-md px-3 py-2">
+          Aap ko sirf apne khud ke entries dikh rahe hain.
+        </div>
+      )}
       <div className="card flex flex-wrap gap-2 items-end">
         <div className="flex-1 min-w-[200px] relative">
           <label className="label">Search (naam / mobile / receipt / hissa naam)</label>
