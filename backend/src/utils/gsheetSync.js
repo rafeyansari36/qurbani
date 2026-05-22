@@ -39,6 +39,7 @@ let lastSyncAt = null;
 let lastError = null;
 let lastDurationMs = 0;
 let lastReason = '';
+let lastScriptVersion = null;
 
 export function isEnabled() {
   return !!WEBHOOK;
@@ -52,6 +53,7 @@ export function getStatus() {
     lastError,
     lastDurationMs,
     lastReason,
+    lastScriptVersion,
     inflight,
     pending: !!pendingTimer || queued,
   };
@@ -117,6 +119,7 @@ async function runSync(reason) {
 
     lastSyncAt = new Date();
     lastError = null;
+    lastScriptVersion = data.version ?? null;
     return { ok: true };
   } catch (err) {
     lastError = err.message || String(err);
@@ -197,10 +200,10 @@ async function buildPayload() {
     tabs[`Day${d}-OUT`] = buildLineTab(buckets[`${d}-out`]);
   }
   for (const d of [1, 2, 3]) {
-    tabs[`Day${d}-IN-Janwar`] = buildJanwarTab(buckets[`${d}-in`]);
+    tabs[`Day${d}-IN-Janwar`] = buildJanwarTab(buckets[`${d}-in`], d);
   }
   for (const d of [1, 2, 3]) {
-    tabs[`Day${d}-OUT-Janwar`] = buildJanwarTab(buckets[`${d}-out`]);
+    tabs[`Day${d}-OUT-Janwar`] = buildJanwarTab(buckets[`${d}-out`], d);
   }
 
   const summary = buildSummary(receipts);
@@ -220,16 +223,26 @@ function buildLineTab(items) {
   };
 }
 
-function buildJanwarTab(items) {
-  // Flat single-chunk format: every row of janwar N gets Sr.No = N.
-  // 7 rows per janwar; the last janwar may be partial if total hisse % 7 != 0.
-  const rows = items.map((x, idx) => {
-    const janwarNo = Math.floor(idx / ROWS_PER_JANWAR) + 1;
-    return janwarRow(x.hissa, janwarNo);
-  });
+function buildJanwarTab(items, day) {
+  // One chunk per janwar — each chunk gets its own title row (Day1-1, Day1-2…)
+  // and a Header row, followed by up to 7 data rows. Every row inside chunk N
+  // has Sr No. = N so the value is repeated for all 7 hisse of that janwar.
+  // The Apps Script vertically merges the first column across each chunk's
+  // data rows (driven by `mergeFirstColumnPerChunk`) so "1", "2"… appears
+  // exactly once per janwar, centered across its 7 rows.
+  const chunks = [];
+  for (let i = 0; i < items.length; i += ROWS_PER_JANWAR) {
+    const slice = items.slice(i, i + ROWS_PER_JANWAR);
+    const janwarNo = chunks.length + 1;
+    chunks.push({
+      title: `Day${day}-${janwarNo}`,
+      rows: slice.map((x) => janwarRow(x.hissa, janwarNo)),
+    });
+  }
   return {
     headers: JANWAR_HEADERS,
-    chunks: [{ title: '', rows }],
+    chunks,
+    mergeFirstColumnPerChunk: true,
   };
 }
 

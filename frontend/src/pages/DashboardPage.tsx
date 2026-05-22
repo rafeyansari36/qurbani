@@ -65,6 +65,7 @@ interface SyncStatus {
   lastError: string | null;
   lastDurationMs: number;
   lastReason: string;
+  lastScriptVersion: number | null;
   inflight: boolean;
   pending: boolean;
 }
@@ -248,6 +249,18 @@ export default function DashboardPage() {
                       sync.lastReason ? `, ${sync.lastReason}` : ''
                     })`
                   : 'Abhi tak nahi'}
+              </div>
+              <div>
+                Apps Script version:{' '}
+                {sync.lastScriptVersion == null ? (
+                  <span className="text-amber-600 font-semibold">unknown (redeploy karein)</span>
+                ) : sync.lastScriptVersion < 3 ? (
+                  <span className="text-amber-600 font-semibold">
+                    v{sync.lastScriptVersion} — purana hai, redeploy karein (latest: v3)
+                  </span>
+                ) : (
+                  <span className="text-green-700 font-semibold">v{sync.lastScriptVersion} ✓</span>
+                )}
               </div>
               {sync.lastError && (
                 <div className="text-red-600">Last error: {sync.lastError}</div>

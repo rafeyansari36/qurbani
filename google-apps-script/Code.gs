@@ -49,6 +49,12 @@
 
 const SHARED_SECRET = 'Qurb@n!K@RengED!|seK@reng%';
 
+// Bump this whenever you change Code.gs. The number is echoed back in every
+// sync response so the backend logs can confirm which version is running.
+// If the backend "Last sync" shows a version older than the latest below, the
+// Apps Script needs a new deployment.
+const SCRIPT_VERSION = 3;
+
 const HEADER_BG = '#15803d';
 const HEADER_FG = '#ffffff';
 const SECTION_BG = '#dcfce7';
@@ -82,6 +88,7 @@ function doPost(e) {
 
     return jsonOut({
       ok: true,
+      version: SCRIPT_VERSION,
       ts: new Date().toISOString(),
       tabs: Object.keys(tabs).length,
     });
@@ -93,6 +100,7 @@ function doPost(e) {
 function doGet() {
   return jsonOut({
     ok: true,
+    version: SCRIPT_VERSION,
     info: 'Qurbani sync endpoint. POST a JSON payload with the correct secret.',
   });
 }
@@ -166,6 +174,18 @@ function writeTab(ss, name, headers, payload) {
       const dataRange = sheet.getRange(r, 1, data.length, width);
       dataRange.setValues(data);
       dataRange.setBorder(true, true, true, true, true, true);
+
+      // Optional: vertically merge the first column across all data rows of
+      // this chunk (used by janwar tabs so "Sr No." shows once per janwar
+      // instead of repeating 7 times). Sheets keeps the value of the top-left
+      // cell when merging — the others (which are duplicates here) are dropped.
+      if (payload && payload.mergeFirstColumnPerChunk && data.length > 1) {
+        const firstCol = sheet.getRange(r, 1, data.length, 1);
+        firstCol.mergeVertically();
+        firstCol.setVerticalAlignment('middle').setHorizontalAlignment('center')
+          .setFontWeight('bold');
+      }
+
       r += data.length;
     }
 

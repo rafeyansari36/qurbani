@@ -54,6 +54,11 @@ export function validateReceiptInput(body) {
 
   if (body.notes && len(body.notes) > 500) errors.notes = 'Notes max 500 chars';
 
+  const deviceLabel = isString(body.deviceLabel) ? body.deviceLabel.trim() : '';
+  if (!deviceLabel) errors.deviceLabel = 'Counter location zaroori hai — top bar mein set karein';
+  else if (deviceLabel.length < 2) errors.deviceLabel = 'Counter location kam se kam 2 chars';
+  else if (deviceLabel.length > 40) errors.deviceLabel = 'Counter location max 40 chars';
+
   // Hisse validation
   const hisseErrors = [];
   if (!Array.isArray(body.hisse) || body.hisse.length === 0) {
@@ -106,7 +111,7 @@ export function validateReceiptInput(body) {
     amountPerPart,
     notes: (body.notes || '').trim(),
     hisse: body.hisse,
-    deviceLabel: (body.deviceLabel || '').trim(),
+    deviceLabel,
   };
 }
 

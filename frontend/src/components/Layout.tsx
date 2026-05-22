@@ -1,16 +1,33 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const [deviceLabel, setDeviceLabel] = useState(
     () => localStorage.getItem('qurb_device_label') || ''
   );
+  const [showGate, setShowGate] = useState(() => !localStorage.getItem('qurb_device_label'));
+  const [gateInput, setGateInput] = useState('');
 
   useEffect(() => {
     if (deviceLabel) localStorage.setItem('qurb_device_label', deviceLabel);
+    else localStorage.removeItem('qurb_device_label');
   }, [deviceLabel]);
+
+  // If the label is cleared (manually or via tab edit), re-open the gate.
+  useEffect(() => {
+    if (!deviceLabel) setShowGate(true);
+  }, [deviceLabel]);
+
+  function saveGate(e: FormEvent) {
+    e.preventDefault();
+    const v = gateInput.trim();
+    if (v.length < 2) return;
+    setDeviceLabel(v);
+    setShowGate(false);
+    setGateInput('');
+  }
 
   const navItems = [
     { to: '/new', label: 'Nayi Entry' },
@@ -59,6 +76,49 @@ export default function Layout() {
       <main className="max-w-6xl mx-auto w-full p-4 flex-1">
         <Outlet />
       </main>
+
+      {showGate && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <form
+            onSubmit={saveGate}
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-5 space-y-3"
+          >
+            <h2 className="text-lg font-bold text-brand-700">Counter Location Set Karein</h2>
+            <p className="text-sm text-slate-600">
+              Entry karne se pehle apna counter / location bata dein (jaise{' '}
+              <span className="font-mono">Gate-1</span>, <span className="font-mono">Hall-A</span>,{' '}
+              <span className="font-mono">Counter-3</span>). Yeh har receipt mein save hoga taaki
+              baad mein pata chale kaunsi jagah se entry hui hai.
+            </p>
+            <div>
+              <label className="label">Counter Location *</label>
+              <input
+                className="input"
+                value={gateInput}
+                onChange={(e) => setGateInput(e.target.value)}
+                placeholder="e.g., Gate-1"
+                maxLength={40}
+                autoFocus
+              />
+              {gateInput.trim().length > 0 && gateInput.trim().length < 2 && (
+                <div className="text-xs text-red-600 mt-1">Kam se kam 2 chars chahiye</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={gateInput.trim().length < 2}
+              >
+                Save & Continue
+              </button>
+            </div>
+            <div className="text-xs text-slate-400 pt-1 border-t">
+              Tip: Yeh top bar mein bhi change kar sakte hain.
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
