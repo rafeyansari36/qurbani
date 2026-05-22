@@ -5,9 +5,10 @@ const SECRET = process.env.GSHEET_SHARED_SECRET || '';
 const SHEET_URL = process.env.GSHEET_VIEW_URL || '';
 const DEBOUNCE_MS = Number(process.env.GSHEET_DEBOUNCE_MS) || 2000;
 const REQUEST_TIMEOUT_MS = 30_000;
-const ROWS_PER_TABLE = 7;
+const ROWS_PER_JANWAR = 7;
 
-const HEADERS = [
+// Full hissa-level columns for the line-by-line tabs (Day1-IN ... Day3-OUT)
+const LINE_HEADERS = [
   'S.No',
   'Receipt',
   'Hissa Code',
@@ -17,11 +18,19 @@ const HEADERS = [
   'Address',
   'Type',
   'Gender',
+  'Receiver',
+  'Payment',
+  'Parts',
+  'Amount/Part',
   'Amount (Receipt)',
   'Created By',
   'Counter',
   'Date',
 ];
+
+// Minimal columns for the 7-hissa janwar grouping tabs.
+// Sr.No = janwar number (1 for all 7 hisse of janwar 1, 2 for janwar 2, ...).
+const JANWAR_HEADERS = ['Sr No.', 'Naam', 'Type'];
 
 let pendingTimer = null;
 let inflight = false;
@@ -132,7 +141,7 @@ function typeLabel(h) {
   return h.type;
 }
 
-function rowFromHissa(receipt, hissa, sNo) {
+function lineRow(receipt, hissa, sNo) {
   return [
     sNo,
     receipt.receiptNo,
@@ -143,6 +152,10 @@ function rowFromHissa(receipt, hissa, sNo) {
     receipt.address || '',
     typeLabel(hissa),
     hissa.aqeeqahGender || '',
+    receipt.receiverName || '',
+    (receipt.paymentMode || '').toUpperCase(),
+    Number(receipt.parts) || 0,
+    Number(receipt.amountPerPart) || 0,
     Number(receipt.amount) || 0,
     receipt.createdByName || '',
     receipt.deviceInfo?.deviceLabel || '',
@@ -150,46 +163,74 @@ function rowFromHissa(receipt, hissa, sNo) {
   ];
 }
 
+function janwarRow(hissa, janwarNo) {
+  return [janwarNo, hissa.naam, hissa.type];
+}
+
 async function buildPayload() {
   const receipts = await Receipt.find({ cancelled: false }).sort({ createdAt: 1 });
 
-  // 6 day-type tabs (rows pre-sorted by serial within each tab)
+  // Bucket hisse by day + qurbaniType, sorted by serialNo for stable order
   const buckets = {};
   for (const d of [1, 2, 3]) {
-    for (const t of ['in', 'out']) buckets[`Day${d}-${t.toUpperCase()}`] = { day: d, items: [] };
+    for (const t of ['in', 'out']) buckets[`${d}-${t}`] = [];
   }
   for (const r of receipts) {
-    const key = `Day${r.day}-${r.qurbaniType.toUpperCase()}`;
+    const key = `${r.day}-${r.qurbaniType}`;
     if (!buckets[key]) continue;
-    for (const h of r.hisse) {
-      buckets[key].items.push({ row: rowFromHissa(r, h, 0), serial: h.serialNo });
-    }
+    for (const h of r.hisse) buckets[key].push({ receipt: r, hissa: h });
+  }
+  for (const k of Object.keys(buckets)) {
+    buckets[k].sort((a, b) => a.hissa.serialNo - b.hissa.serialNo);
   }
 
-  // Split each bucket into 7-row "tables" labelled Day{d}-{idx}, mirroring the
-  // existing Excel /master format. 1 cow = 7 hisse, so each table = 1 animal.
+  // Build 12 tabs in the user-specified order:
+  //   1) Day1-IN, Day2-IN, Day3-IN          (line by line)
+  //   2) Day1-OUT, Day2-OUT, Day3-OUT       (line by line)
+  //   3) Day1-IN-Janwar, ...-OUT-Janwar     (7-hissa grouping)
   const tabs = {};
-  for (const key of Object.keys(buckets)) {
-    const { day, items } = buckets[key];
-    items.sort((a, b) => a.serial - b.serial);
-    const chunks = [];
-    for (let i = 0; i < items.length; i += ROWS_PER_TABLE) {
-      const slice = items.slice(i, i + ROWS_PER_TABLE);
-      chunks.push({
-        title: `Day${day}-${chunks.length + 1}`,
-        rows: slice.map((x, idx) => {
-          const row = x.row.slice();
-          row[0] = i + idx + 1; // running S.No across all chunks in this tab
-          return row;
-        }),
-      });
-    }
-    tabs[key] = { chunks };
+
+  for (const d of [1, 2, 3]) {
+    tabs[`Day${d}-IN`] = buildLineTab(buckets[`${d}-in`]);
+  }
+  for (const d of [1, 2, 3]) {
+    tabs[`Day${d}-OUT`] = buildLineTab(buckets[`${d}-out`]);
+  }
+  for (const d of [1, 2, 3]) {
+    tabs[`Day${d}-IN-Janwar`] = buildJanwarTab(buckets[`${d}-in`]);
+  }
+  for (const d of [1, 2, 3]) {
+    tabs[`Day${d}-OUT-Janwar`] = buildJanwarTab(buckets[`${d}-out`]);
   }
 
   const summary = buildSummary(receipts);
 
-  return { headers: HEADERS, tabs, summary };
+  // `headers` is sent at the top level too as a fallback for older Apps Script
+  // deployments that only read `body.headers` (pre per-tab-headers). Janwar
+  // tabs will look slightly wrong on the old script (17 header cols vs 3 data
+  // cols) but won't throw a width=0 error. Redeploy Code.gs to fix properly.
+  return { headers: LINE_HEADERS, tabs, summary };
+}
+
+function buildLineTab(items) {
+  const rows = items.map((x, idx) => lineRow(x.receipt, x.hissa, idx + 1));
+  return {
+    headers: LINE_HEADERS,
+    chunks: [{ title: '', rows }],
+  };
+}
+
+function buildJanwarTab(items) {
+  // Flat single-chunk format: every row of janwar N gets Sr.No = N.
+  // 7 rows per janwar; the last janwar may be partial if total hisse % 7 != 0.
+  const rows = items.map((x, idx) => {
+    const janwarNo = Math.floor(idx / ROWS_PER_JANWAR) + 1;
+    return janwarRow(x.hissa, janwarNo);
+  });
+  return {
+    headers: JANWAR_HEADERS,
+    chunks: [{ title: '', rows }],
+  };
 }
 
 function buildSummary(receipts) {
@@ -205,6 +246,8 @@ function buildSummary(receipts) {
   let totalAmount = 0;
   let qurbaniHisse = 0;
   let aqeeqahHisse = 0;
+  let cashAmount = 0;
+  let onlineAmount = 0;
 
   for (const r of receipts) {
     const d = dayTotals[r.day];
@@ -222,6 +265,8 @@ function buildSummary(receipts) {
     totalReceipts += 1;
     totalHisse += r.totalHisse;
     totalAmount += amt;
+    if (r.paymentMode === 'online') onlineAmount += amt;
+    else cashAmount += amt;
     for (const h of r.hisse) {
       if (h.type === 'qurbani') qurbaniHisse += 1;
       else if (h.type === 'aqeeqah') aqeeqahHisse += 1;
@@ -264,7 +309,7 @@ function buildSummary(receipts) {
     'Qurbani Hisse', qurbaniHisse,
     'Aqeeqah Hisse', aqeeqahHisse,
   ]);
-  pushRow(['Total Amount (Rs.)', totalAmount]);
+  pushRow(['Total Amount (Rs.)', totalAmount, 'Cash', cashAmount, 'Online', onlineAmount]);
   pushRow([]);
 
   pushRow(['Day-wise breakdown'], { bold: true, section: true });

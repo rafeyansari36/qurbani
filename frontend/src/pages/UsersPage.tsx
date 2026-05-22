@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 interface U {
@@ -36,11 +37,28 @@ function validate(f: { name: string; username: string; password: string; role: s
 }
 
 export default function UsersPage() {
+  const { user: me } = useAuth();
   const [users, setUsers] = useState<U[]>([]);
   const [form, setForm] = useState({ name: '', username: '', password: '', role: 'volunteer' });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
   const [touched, setTouched] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  async function toggleActive(u: U) {
+    const verb = u.active ? 'deactivate' : 'activate';
+    if (!confirm(`${u.name} ko ${verb} karna hai?`)) return;
+    setTogglingId(u._id);
+    try {
+      await api.patch(`/auth/users/${u._id}/active`, { active: !u.active });
+      toast.success(u.active ? 'Deactivated' : 'Activated');
+      load();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Update failed');
+    } finally {
+      setTogglingId(null);
+    }
+  }
 
   useEffect(() => {
     if (touched) setErrors(validate(form));
@@ -150,20 +168,45 @@ export default function UsersPage() {
               <th className="p-2">Role</th>
               <th className="p-2">Active</th>
               <th className="p-2">Joined</th>
+              <th className="p-2">Action</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u._id} className="border-t">
-                <td className="p-2">{u.name}</td>
-                <td className="p-2">{u.username}</td>
-                <td className="p-2">{u.role}</td>
-                <td className="p-2">{u.active ? 'Yes' : 'No'}</td>
-                <td className="p-2 text-xs text-slate-500">
-                  {new Date(u.createdAt).toLocaleString('en-IN')}
-                </td>
-              </tr>
-            ))}
+            {users.map((u) => {
+              const isSelf = me?.id === u._id;
+              return (
+                <tr key={u._id} className="border-t">
+                  <td className="p-2">{u.name}{isSelf && <span className="text-xs text-slate-400"> (aap)</span>}</td>
+                  <td className="p-2">{u.username}</td>
+                  <td className="p-2">{u.role}</td>
+                  <td className="p-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                      u.active
+                        ? 'bg-green-100 text-green-700 border-green-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}>
+                      {u.active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="p-2 text-xs text-slate-500">
+                    {new Date(u.createdAt).toLocaleString('en-IN')}
+                  </td>
+                  <td className="p-2">
+                    {isSelf ? (
+                      <span className="text-xs text-slate-400">—</span>
+                    ) : (
+                      <button
+                        onClick={() => toggleActive(u)}
+                        disabled={togglingId === u._id}
+                        className={u.active ? 'text-red-600' : 'text-green-700'}
+                      >
+                        {togglingId === u._id ? '…' : u.active ? 'Deactivate' : 'Activate'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

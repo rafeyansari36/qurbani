@@ -5,10 +5,9 @@ import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 router.use(requireAuth);
 
-// Volunteers see only their own data; admins see everything.
-function scopeFilter(user) {
-  if (user.role === 'admin') return { cancelled: false };
-  return { cancelled: false, createdBy: user._id };
+// All authenticated users see the same global stats — data is shared.
+function scopeFilter(_user) {
+  return { cancelled: false };
 }
 
 router.get('/summary', async (req, res, next) => {
@@ -51,22 +50,19 @@ router.get('/summary', async (req, res, next) => {
       { $sort: { hisse: -1 } },
     ]);
 
-    // Admins get per-user breakdown; volunteers don't need it (it would just be themselves).
-    const byUserAgg =
-      req.user.role === 'admin'
-        ? await Receipt.aggregate([
-            { $match: match },
-            {
-              $group: {
-                _id: '$createdByName',
-                receipts: { $sum: 1 },
-                hisse: { $sum: '$totalHisse' },
-                amount: { $sum: '$amount' },
-              },
-            },
-            { $sort: { hisse: -1 } },
-          ])
-        : [];
+    // Everyone gets the per-user breakdown now that data is shared.
+    const byUserAgg = await Receipt.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$createdByName',
+          receipts: { $sum: 1 },
+          hisse: { $sum: '$totalHisse' },
+          amount: { $sum: '$amount' },
+        },
+      },
+      { $sort: { hisse: -1 } },
+    ]);
 
     const byDay = {};
     const dayTotals = {

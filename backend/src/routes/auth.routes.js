@@ -62,4 +62,31 @@ router.get('/users', requireAuth, requireAdmin, async (_req, res, next) => {
   }
 });
 
+// Toggle (or set) a user's active flag. Admins cannot deactivate themselves.
+router.patch('/users/:id/active', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    if (String(req.params.id) === String(req.user._id)) {
+      return res.status(400).json({ error: 'Apne aap ko deactivate nahi kar sakte' });
+    }
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    const next = typeof req.body.active === 'boolean' ? req.body.active : !target.active;
+    target.active = next;
+    await target.save();
+
+    res.json({
+      user: {
+        id: target._id,
+        name: target.name,
+        username: target.username,
+        role: target.role,
+        active: target.active,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

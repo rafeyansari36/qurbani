@@ -37,6 +37,21 @@ export function validateReceiptInput(body) {
   if (!Number.isFinite(amount) || amount < 0) errors.amount = 'Amount 0 ya zyada hona chahiye';
   else if (amount > 1e7) errors.amount = 'Amount bahut zyada hai';
 
+  const receiverName = isString(body.receiverName) ? body.receiverName.trim() : '';
+  if (receiverName.length > 100) errors.receiverName = 'Receiver naam bahut lamba hai (max 100)';
+
+  const paymentMode = body.paymentMode || 'cash';
+  if (!['cash', 'online'].includes(paymentMode)) errors.paymentMode = 'Payment mode cash ya online';
+
+  const parts = Number(body.parts || 0);
+  if (!Number.isFinite(parts) || parts < 0) errors.parts = 'Parts 0 ya zyada hona chahiye';
+  else if (parts > 1000) errors.parts = 'Parts bahut zyada hain';
+
+  const amountPerPart = Number(body.amountPerPart || 0);
+  if (!Number.isFinite(amountPerPart) || amountPerPart < 0)
+    errors.amountPerPart = 'Amount per part 0 ya zyada hona chahiye';
+  else if (amountPerPart > 1e7) errors.amountPerPart = 'Amount per part bahut zyada hai';
+
   if (body.notes && len(body.notes) > 500) errors.notes = 'Notes max 500 chars';
 
   // Hisse validation
@@ -62,6 +77,19 @@ export function validateReceiptInput(body) {
     if (hisseErrors.length) errors.hisseRows = hisseErrors;
   }
 
+  // Cross-check: if Parts is set, the expanded hisse count (ladka aqeeqah = 2
+  // hisse) must match Parts exactly. Prevents mismatched receipts where the
+  // family paid for N parts but the hisse list adds up to something else.
+  if (!errors.parts && !errors.hisse && !errors.hisseRows && parts > 0 && Array.isArray(body.hisse)) {
+    const expanded = body.hisse.reduce((sum, h) => {
+      if (h?.type === 'aqeeqah' && h?.aqeeqahGender === 'ladka') return sum + 2;
+      return sum + 1;
+    }, 0);
+    if (expanded !== parts) {
+      errors.hisse = `Parts ${parts} hai lekin hisse ki count ${expanded} hai — match honi chahiye`;
+    }
+  }
+
   if (Object.keys(errors).length) throw new ValidationError(errors);
 
   return {
@@ -72,6 +100,10 @@ export function validateReceiptInput(body) {
     day,
     qurbaniType: body.qurbaniType,
     amount,
+    receiverName,
+    paymentMode,
+    parts,
+    amountPerPart,
     notes: (body.notes || '').trim(),
     hisse: body.hisse,
     deviceLabel: (body.deviceLabel || '').trim(),

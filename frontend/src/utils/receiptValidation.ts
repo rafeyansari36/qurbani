@@ -12,6 +12,10 @@ export interface ReceiptFormInput {
   day: 1 | 2 | 3;
   qurbaniType: 'in' | 'out';
   amount?: string | number;
+  receiverName?: string;
+  paymentMode?: 'cash' | 'online';
+  parts?: string | number;
+  amountPerPart?: string | number;
   notes?: string;
   hisse: HissaInput[];
 }
@@ -24,6 +28,10 @@ export interface ReceiptFormErrors {
   day?: string;
   qurbaniType?: string;
   amount?: string;
+  receiverName?: string;
+  paymentMode?: string;
+  parts?: string;
+  amountPerPart?: string;
   notes?: string;
   hisse?: string;
   hisseRows?: Record<number, { naam?: string; type?: string; aqeeqahGender?: string }>;
@@ -54,6 +62,20 @@ export function validateReceiptForm(f: ReceiptFormInput): ReceiptFormErrors {
   if (!Number.isFinite(amt) || amt < 0) errs.amount = 'Amount 0 ya zyada';
   else if (amt > 1e7) errs.amount = 'Amount bahut zyada hai';
 
+  if (f.receiverName && f.receiverName.length > 100) errs.receiverName = 'Max 100 chars';
+
+  if (f.paymentMode && !['cash', 'online'].includes(f.paymentMode)) {
+    errs.paymentMode = 'Cash ya Online select karein';
+  }
+
+  const parts = Number(f.parts || 0);
+  if (!Number.isFinite(parts) || parts < 0) errs.parts = 'Parts 0 ya zyada';
+  else if (parts > 1000) errs.parts = 'Parts bahut zyada';
+
+  const app = Number(f.amountPerPart || 0);
+  if (!Number.isFinite(app) || app < 0) errs.amountPerPart = 'Amount/part 0 ya zyada';
+  else if (app > 1e7) errs.amountPerPart = 'Amount/part bahut zyada';
+
   if (f.notes && f.notes.length > 500) errs.notes = 'Max 500 chars';
 
   if (!f.hisse.length) errs.hisse = 'Kam se kam 1 hissa';
@@ -71,6 +93,17 @@ export function validateReceiptForm(f: ReceiptFormInput): ReceiptFormErrors {
     if (Object.keys(he).length) rows[i] = he;
   });
   if (Object.keys(rows).length) errs.hisseRows = rows;
+
+  // Parts must match expanded hisse count (ladka aqeeqah = 2 hisse)
+  if (!errs.hisse && !errs.hisseRows && parts > 0) {
+    const expanded = f.hisse.reduce((s, h) => {
+      if (h.type === 'aqeeqah' && h.aqeeqahGender === 'ladka') return s + 2;
+      return s + 1;
+    }, 0);
+    if (expanded !== parts) {
+      errs.hisse = `Parts ${parts} hai lekin ${expanded} hisse hain — match honi chahiye`;
+    }
+  }
 
   return errs;
 }

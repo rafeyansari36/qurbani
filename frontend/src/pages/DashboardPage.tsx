@@ -122,12 +122,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      {!isAdmin && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-md px-3 py-2">
-          Aap ko sirf apne khud ke entries ka data dikh raha hai.
-        </div>
-      )}
-
       {/* Hero */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <BigStat label="Total Receipts" value={t?.receipts ?? 0} color="brand" />
@@ -175,9 +169,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Counter + User tables */}
-      <div className={`grid ${isAdmin ? 'md:grid-cols-2' : ''} gap-3`}>
+      <div className="grid md:grid-cols-2 gap-3">
         <LeaderCard
-          title={isAdmin ? 'Counter-wise (Device)' : 'Aapke Counters'}
+          title="Counter-wise (Device)"
           rows={(summary?.byCounter || []).map((r) => ({
             label: r.counter,
             receipts: r.receipts,
@@ -186,18 +180,16 @@ export default function DashboardPage() {
           }))}
           labelCol="Counter"
         />
-        {isAdmin && (
-          <LeaderCard
-            title="User-wise"
-            rows={(summary?.byUser || []).map((r) => ({
-              label: r.user,
-              receipts: r.receipts,
-              hisse: r.hisse,
-              amount: r.amount,
-            }))}
-            labelCol="User"
-          />
-        )}
+        <LeaderCard
+          title="User-wise"
+          rows={(summary?.byUser || []).map((r) => ({
+            label: r.user,
+            receipts: r.receipts,
+            hisse: r.hisse,
+            amount: r.amount,
+          }))}
+          labelCol="User"
+        />
       </div>
 
       {/* Recent activity */}

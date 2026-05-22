@@ -11,11 +11,11 @@ router.use(requireAuth);
 
 const year = () => new Date().getFullYear();
 
-// Volunteers can only see / edit / cancel receipts they themselves created.
-// Admins see everything.
-function scoped(user, extra = {}) {
-  if (user.role === 'admin') return extra;
-  return { ...extra, createdBy: user._id };
+// All authenticated users can see / edit / cancel any receipt — data is
+// shared across the team. Cancellation/edit history is still tracked via
+// cancelledBy / createdBy on each receipt.
+function scoped(_user, extra = {}) {
+  return extra;
 }
 
 /**
@@ -53,7 +53,10 @@ function expandHisse(rows) {
 router.post('/', async (req, res, next) => {
   try {
     const input = validateReceiptInput(req.body);
-    const { naam, address, mobile, day, qurbaniType, hisse, amount, notes, deviceLabel, receiptNo } = input;
+    const {
+      naam, address, mobile, day, qurbaniType, hisse, amount, notes, deviceLabel, receiptNo,
+      receiverName, paymentMode, parts, amountPerPart,
+    } = input;
 
     const expanded = expandHisse(hisse);
 
@@ -84,6 +87,10 @@ router.post('/', async (req, res, next) => {
       qurbaniType,
       hisse: hisseWithCodes,
       totalHisse: hisseWithCodes.length,
+      receiverName,
+      paymentMode,
+      parts,
+      amountPerPart,
       amount,
       notes,
       createdBy: req.user._id,
@@ -161,7 +168,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.patch('/:id', async (req, res, next) => {
   try {
-    const updatable = ['naam', 'address', 'mobile', 'amount', 'notes'];
+    const updatable = ['naam', 'address', 'mobile', 'amount', 'notes', 'receiverName', 'paymentMode', 'parts', 'amountPerPart'];
     const patch = {};
     for (const k of updatable) if (k in req.body) patch[k] = req.body[k];
 
@@ -178,16 +185,26 @@ router.patch('/:id', async (req, res, next) => {
   }
 });
 
+// Cancel = hard delete. Receipts are removed from the database entirely so
+// the Google Sheet (and all aggregates) drop them on the next sync.
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const receipt = await Receipt.findOneAndDelete(scoped(req.user, { _id: req.params.id }));
+    if (!receipt) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true, deletedId: receipt._id });
+    scheduleSync('delete');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Legacy alias — older clients still POST /:id/cancel. Same behavior: delete.
 router.post('/:id/cancel', async (req, res, next) => {
   try {
-    const receipt = await Receipt.findOneAndUpdate(
-      scoped(req.user, { _id: req.params.id }),
-      { cancelled: true, cancelledAt: new Date(), cancelledBy: req.user._id },
-      { new: true }
-    );
+    const receipt = await Receipt.findOneAndDelete(scoped(req.user, { _id: req.params.id }));
     if (!receipt) return res.status(404).json({ error: 'Not found' });
-    res.json({ receipt });
-    scheduleSync('cancel');
+    res.json({ ok: true, deletedId: receipt._id });
+    scheduleSync('delete');
   } catch (err) {
     next(err);
   }

@@ -28,6 +28,11 @@ const receiptSchema = new mongoose.Schema(
     hisse: { type: [hissaSchema], default: [] },
     totalHisse: { type: Number, required: true, min: 1 },
 
+    receiverName: { type: String, default: '', trim: true },
+    paymentMode: { type: String, enum: ['cash', 'online'], default: 'cash' },
+    parts: { type: Number, default: 0, min: 0 },
+    amountPerPart: { type: Number, default: 0, min: 0 },
+
     amount: { type: Number, default: 0 },
     notes: { type: String, default: '' },
 

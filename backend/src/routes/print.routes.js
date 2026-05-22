@@ -6,10 +6,9 @@ import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 router.use(requireAuth);
 
-// Volunteers can only print receipts they themselves created.
-function scoped(user, extra = {}) {
-  if (user.role === 'admin') return extra;
-  return { ...extra, createdBy: user._id };
+// All authenticated users can print any receipt — data is shared.
+function scoped(_user, extra = {}) {
+  return extra;
 }
 
 // Thermal printer module is loaded lazily — it has native deps that we don't want
