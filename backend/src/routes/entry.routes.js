@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import Receipt from '../models/Receipt.js';
 import { nextSequence } from '../models/Counter.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { validateReceiptInput } from '../utils/validate.js';
 import { scheduleSync } from '../utils/gsheetSync.js';
 
@@ -166,28 +166,71 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
+// Full receipt edit — same validation/shape as POST. If receiptNo, day,
+// qurbaniType, or hisse change, the hissa codes and serialNos are regenerated.
+// (Old serialNos are simply abandoned — small gaps in the per-day counter are
+// expected after edits and don't affect correctness.)
 router.patch('/:id', async (req, res, next) => {
   try {
-    const updatable = ['naam', 'address', 'mobile', 'amount', 'notes', 'receiverName', 'paymentMode', 'parts', 'amountPerPart'];
-    const patch = {};
-    for (const k of updatable) if (k in req.body) patch[k] = req.body[k];
+    const existing = await Receipt.findOne(scoped(req.user, { _id: req.params.id }));
+    if (!existing) return res.status(404).json({ error: 'Not found' });
 
-    const receipt = await Receipt.findOneAndUpdate(
-      scoped(req.user, { _id: req.params.id }),
-      patch,
-      { new: true }
-    );
-    if (!receipt) return res.status(404).json({ error: 'Not found' });
-    res.json({ receipt });
+    const input = validateReceiptInput(req.body);
+    const {
+      naam, address, mobile, day, qurbaniType, hisse, amount, notes, deviceLabel, receiptNo,
+      receiverName, paymentMode, parts, amountPerPart,
+    } = input;
+
+    // Receipt no uniqueness — skip if unchanged.
+    if (receiptNo !== existing.receiptNo) {
+      const taken = await Receipt.findOne({ receiptNo, _id: { $ne: existing._id } }).select('_id');
+      if (taken) {
+        return res.status(409).json({
+          error: `Receipt no "${receiptNo}" pehle se use ho chuka hai`,
+          fields: { receiptNo: 'Already used' },
+        });
+      }
+    }
+
+    const expanded = expandHisse(hisse);
+    const hisseWithCodes = [];
+    for (let i = 0; i < expanded.length; i++) {
+      const serialNo = await nextSequence(`day-${Number(day)}-${qurbaniType}-${year()}`);
+      hisseWithCodes.push({
+        ...expanded[i],
+        hissaNo: i + 1,
+        code: `${receiptNo}/${i + 1}`,
+        serialNo,
+      });
+    }
+
+    existing.receiptNo = receiptNo;
+    existing.naam = naam;
+    existing.address = address;
+    existing.mobile = mobile;
+    existing.day = day;
+    existing.qurbaniType = qurbaniType;
+    existing.hisse = hisseWithCodes;
+    existing.totalHisse = hisseWithCodes.length;
+    existing.receiverName = receiverName;
+    existing.paymentMode = paymentMode;
+    existing.parts = parts;
+    existing.amountPerPart = amountPerPart;
+    existing.amount = amount;
+    existing.notes = notes;
+    if (deviceLabel) existing.deviceInfo.deviceLabel = deviceLabel;
+
+    await existing.save();
+    res.json({ receipt: existing });
     scheduleSync('edit');
   } catch (err) {
     next(err);
   }
 });
 
-// Cancel = hard delete. Receipts are removed from the database entirely so
-// the Google Sheet (and all aggregates) drop them on the next sync.
-router.delete('/:id', async (req, res, next) => {
+// Hard delete — admin only. Receipts are removed from the database entirely
+// so the Google Sheet (and all aggregates) drop them on the next sync.
+router.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const receipt = await Receipt.findOneAndDelete(scoped(req.user, { _id: req.params.id }));
     if (!receipt) return res.status(404).json({ error: 'Not found' });
@@ -199,7 +242,7 @@ router.delete('/:id', async (req, res, next) => {
 });
 
 // Legacy alias — older clients still POST /:id/cancel. Same behavior: delete.
-router.post('/:id/cancel', async (req, res, next) => {
+router.post('/:id/cancel', requireAdmin, async (req, res, next) => {
   try {
     const receipt = await Receipt.findOneAndDelete(scoped(req.user, { _id: req.params.id }));
     if (!receipt) return res.status(404).json({ error: 'Not found' });
